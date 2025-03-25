@@ -1,0 +1,17 @@
+slakh2100_flac_redux/
+
+spectrograms_train/
+timestamps_train.txt
+labels_train/
+
+spectrograms_validation/
+timestamps_validation.txt
+labels_validation/
+
+spectrograms_test/
+timestamps_test.txt
+labels_test/
+
+spectrograms_isolated/
+timestamps_isolated.txt
+labels_isolated/
