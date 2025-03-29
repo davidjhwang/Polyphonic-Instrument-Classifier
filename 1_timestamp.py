@@ -8,7 +8,7 @@ import torch
 from tqdm import tqdm
 
 # ===================== FOR EACH STEM =====================
-def detect_active_timestamps(stem_path, sr=44100, threshold=0.015, gap=0.1):
+def detect_active_timestamps(stem_path, sr=44100, threshold=0.001, gap=0.2):
     # Load and convert to tensor
     y, sr = librosa.load(stem_path, sr=sr)
     y_gpu = torch.tensor(y, dtype=torch.float32, device="cuda")
@@ -70,4 +70,6 @@ def process_all_tracks(dataset_path, output_file):
                 f.write(result)
 
 # Compiling timestamps (~8-9 min)
-process_all_tracks("slakh2100_flac_redux/reduced_isolated", "timestamps_isolated.txt")
+process_all_tracks("slakh2100_flac_redux/reduced_train", "timestamps_train.txt")
+process_all_tracks("slakh2100_flac_redux/reduced_validation", "timestamps_validation.txt")
+process_all_tracks("slakh2100_flac_redux/reduced_test", "timestamps_test.txt")
