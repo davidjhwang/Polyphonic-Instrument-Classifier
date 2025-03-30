@@ -71,3 +71,5 @@ def process_all_tracks(dataset_path, output_file):
 
 # Compiling timestamps (~8-9 min)
 process_all_tracks("slakh2100_flac_redux/reduced_train", "timestamps_train.txt")
+process_all_tracks("slakh2100_flac_redux/reduced_validation", "timestamps_validation.txt")
+process_all_tracks("slakh2100_flac_redux/reduced_test", "timestamps_test.txt")
