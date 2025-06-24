@@ -15,3 +15,6 @@ labels_test/
 spectrograms_isolated/
 timestamps_isolated.txt
 labels_isolated/
+
+inference (React App)/node_modules
+inference (React App)/public

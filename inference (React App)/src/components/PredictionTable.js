@@ -1,0 +1,89 @@
+import React from "react";
+
+const PredictionTable = React.memo(function PredictionTable({
+  timeline,
+  timeLabels,
+  cellWidth,
+  labelOffset,
+  firstCellRef,
+  labelCellRef,
+}) {
+  return (
+    <table
+      style={{
+        borderCollapse: "collapse",
+        tableLayout: "fixed",
+        width: `${labelOffset + timeLabels.length * cellWidth}px`
+      }}
+    >
+      <colgroup>
+        <col style={{ width: `${labelOffset}px` }} />
+        {timeLabels.map((_, i) => (
+          <col key={i} style={{ width: `${cellWidth}px` }} />
+        ))}
+      </colgroup>
+      <thead>
+        <tr>
+          <th
+            ref={labelCellRef}
+            style={{
+              position: "sticky",
+              left: 0,
+              background: "#fff",
+              textAlign: "left"
+            }}
+          ></th>
+          {timeLabels.map((t, i) => (
+            <th
+              key={i}
+              style={{
+                width: `${cellWidth}px`,
+                minWidth: `${cellWidth}px`,
+                maxWidth: `${cellWidth}px`,
+                padding: "4px",
+                fontSize: "0.75rem",
+                textAlign: "center",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis"
+              }}
+            >
+              {t}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {timeline.map((row, rowIdx) => (
+          <tr key={rowIdx}>
+            <td
+              style={{
+                position: "sticky",
+                left: 0,
+                background: "#f7f7f7",
+                paddingRight: "1rem",
+                fontWeight: "bold"
+              }}
+            >
+              {["Piano", "Guitar", "Bass", "Strings", "Drums"][rowIdx]}
+            </td>
+            {row.map((isActive, colIdx) => (
+              <td
+                key={colIdx}
+                ref={rowIdx === 0 && colIdx === 0 ? firstCellRef : null}
+                style={{
+                  width: `${cellWidth}px`,
+                  height: "40px",
+                  backgroundColor: isActive ? "#4caf50" : "#e0e0e0",
+                  border: "1px solid #ccc"
+                }}
+              />
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+});
+
+export default PredictionTable;
