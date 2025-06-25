@@ -52,7 +52,30 @@ function App() {
 
   const handleUpload = async () => {
     if (!file) return;
+
+    // Clear previous results
+    setTimeline([]);
+    setTimeLabels([]);
+    setWaveform([]);
+    setCursorX(null);
+    setStartRatio(0);
     setStatus("Decoding...");
+
+    // Stop any existing audio playback
+    if (audioCtx) {
+      audioCtx.close();
+      setAudioCtx(null);
+    }
+    if (sourceNode) {
+      try {
+        sourceNode.stop();
+      } catch (e) {
+        console.warn("Source node already stopped or null.");
+      }
+      setSourceNode(null);
+    }
+    cancelAnimationFrame(animationRef.current);
+    setIsPlaying(false);
 
     try {
       const { audioBuffer, rawData } = await decodeAudioFile(file);
@@ -100,8 +123,8 @@ function App() {
       setTimeline(matrix);
       setTimeLabels(times);
       setStatus("Done!");
-      setStartRatio(0); 
-      setCursorX(0); 
+      setStartRatio(0);
+      setCursorX(0);
     } catch (err) {
       console.error("Error during processing:", err);
       setStatus("Failed during processing");
@@ -208,8 +231,6 @@ function App() {
       <input type="file" accept="audio/*" onChange={(e) => setFile(e.target.files[0])} />
       <br /><br />
       <button onClick={handleUpload}>Upload & Analyze</button>
-      <button onClick={playAudio}>▶️ Play</button>
-      <button onClick={pauseAudio}>⏹️ Pause</button>
       <p>{status}</p>
 
       {timeline.length > 0 && (
