@@ -15,7 +15,21 @@ export async function decodeAudioFile(file) {
 
         const arrayBuffer = event.target.result;
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        const rawData = audioBuffer.getChannelData(0); // mono
+
+        const numChannels = audioBuffer.numberOfChannels;
+        const length = audioBuffer.length;
+
+        // Average channels to mono
+        const rawData = new Float32Array(length);
+        for (let ch = 0; ch < numChannels; ch++) {
+          const channelData = audioBuffer.getChannelData(ch);
+          for (let i = 0; i < length; i++) {
+            rawData[i] += channelData[i];
+          }
+        }
+        for (let i = 0; i < length; i++) {
+          rawData[i] /= numChannels;
+        }
 
         resolve({ audioBuffer, rawData });
       } catch (err) {
@@ -27,25 +41,26 @@ export async function decodeAudioFile(file) {
   });
 }
 
-export function sliceIntoChunks(waveform, sampleRate, duration = 1.0, step = 0.5) {
+export function sliceIntoChunks(waveform, sampleRate, duration = 1.0, step = 0.5, normalize = true) {
   const chunkLength = Math.floor(duration * sampleRate);
   const stepLength = Math.floor(step * sampleRate);
   const chunks = [];
 
   for (let start = 0; start + chunkLength <= waveform.length; start += stepLength) {
-    const chunk = waveform.slice(start, start + chunkLength);
+    let chunk = waveform.slice(start, start + chunkLength);
 
-    // 🔥 Normalize chunk
-    let maxAbs = 0;
-    for (let i = 0; i < chunk.length; i++) {
-      const absVal = Math.abs(chunk[i]);
-      if (absVal > maxAbs) maxAbs = absVal;
+    if (normalize) {
+      let maxAbs = 0;
+      for (let i = 0; i < chunk.length; i++) {
+        const absVal = Math.abs(chunk[i]);
+        if (absVal > maxAbs) maxAbs = absVal;
+      }
+
+      const EPSILON = 1e-6;
+      chunk = chunk.map((v) => v / (maxAbs + EPSILON));
     }
 
-    const EPSILON = 1e-6;
-    const normalizedChunk = chunk.map((v) => v / (maxAbs + EPSILON));
-
-    chunks.push(normalizedChunk);
+    chunks.push(chunk);
   }
 
   return chunks;

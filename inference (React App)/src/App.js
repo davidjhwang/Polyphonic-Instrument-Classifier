@@ -34,6 +34,8 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [startRatio, setStartRatio] = useState(0);
 
+  const [melChunks, setMelChunks] = useState([]);
+
   useEffect(() => {
     if (firstCellRef.current && labelCellRef.current) {
       const cell = firstCellRef.current;
@@ -83,27 +85,31 @@ function App() {
       setStatus(`Loaded audio with ${rawData.length} samples`);
 
       const peakBinsPerCell = 7;
-      const totalPeaks = peakBinsPerCell * Math.ceil(rawData.length / 44100 / 0.5);
+      const totalPeaks = peakBinsPerCell * Math.ceil(rawData.length / 44100 / 1.0);
       const peaks = downsamplePeaks(rawData, totalPeaks);
       setWaveform(peaks);
 
-      const chunks = sliceIntoChunks(rawData, 44100);
-      setStatus(`Sliced into ${chunks.length} chunks, generating mel spectrograms...`);
+      const rawChunks = sliceIntoChunks(rawData, 44100, 1.0, 1.0, false);
+      const normChunks = sliceIntoChunks(rawData, 44100, 1.0, 1.0)
+      setStatus(`Sliced into ${rawChunks.length} chunks, generating mel spectrograms...`);
 
-      const melSpectrograms = chunks.map(chunk => generateMelSpectrogram(chunk));
-      setStatus(`Generated ${melSpectrograms.length} mel spectrograms. Running inference...`);
+      const melSpectrogramsVisual = rawChunks.map(chunk => generateMelSpectrogram(chunk));
+      const melSpectrogramInfer = normChunks.map(chunk => generateMelSpectrogram(chunk));
+
+      setMelChunks(melSpectrogramsVisual);
+      setStatus(`Generated ${melSpectrogramsVisual.length} mel spectrograms. Running inference...`);
 
       const predictions = [];
 
-      for (let i = 0; i < melSpectrograms.length; i++) {
-        const result = await runModelOnSpectrogram(melSpectrograms[i]);
+      for (let i = 0; i < melSpectrogramInfer.length; i++) {
+        const result = await runModelOnSpectrogram(melSpectrogramInfer[i]);
         predictions.push({
-          time: (i * 0.5).toFixed(2),
+          time: (i * 1.0).toFixed(2),
           instruments: result
         });
 
         if (i % 50 === 0) {
-          setStatus(`Running inference... (${i}/${melSpectrograms.length})`);
+          setStatus(`Running inference... (${i}/${melSpectrogramInfer.length})`);
           await new Promise(res => setTimeout(res, 10));
         }
       }
@@ -237,7 +243,8 @@ function App() {
         <div style={{ marginTop: "2rem", overflowX: "auto", border: "1px solid #ccc" }}>
           <WaveformViewer
             samples={waveform}
-            samplesPerChunk={44100 * 0.5}
+            melChunks={melChunks}
+            samplesPerChunk={44100 * 1.0} 
             chunkCount={timeLabels.length}
             cellWidth={cellWidth}
             labelOffset={labelOffset}

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef, useEffect } from "react";
 
 const WaveformViewer = ({
   samples,
+  melChunks,
   cellWidth,
   labelOffset,
   borderWidth,
@@ -9,45 +10,94 @@ const WaveformViewer = ({
   cursorX,
   onSeek,
 }) => {
-  const waveformRef = useRef(null);  // background (once)
-  const cursorRef = useRef(null);    // foreground (every frame)
+  const canvasRef = useRef(null);
+  const cursorRef = useRef(null);
 
-  const height = 80;
+  const waveformHeight = 80;
+  const melHeight = 64;
+  const totalHeight = melHeight + waveformHeight;
   const width = labelOffset + chunkCount * cellWidth + borderWidth;
 
-  // ✅ Render waveform ONCE
-  useEffect(() => {
-    if (!waveformRef.current || samples.length === 0) return;
+useEffect(() => {
+  if (!canvasRef.current || samples.length === 0 || melChunks.length === 0) return;
 
-    const canvas = waveformRef.current;
-    const ctx = canvas.getContext("2d");
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext("2d");
 
-    canvas.width = width;
-    canvas.height = height;
+  canvas.width = width;
+  canvas.height = totalHeight;
+  ctx.clearRect(0, 0, width, totalHeight);
 
-    const peaksPerCell = 7;
-    const peakSpacing = cellWidth / peaksPerCell;
-    const totalPeaks = chunkCount * peaksPerCell;
+  // === WAVEFORM ===
+  const peaksPerCell = 7;
+  const peakSpacing = cellWidth / peaksPerCell;
+  const totalPeaks = chunkCount * peaksPerCell;
 
-    ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#1976d2";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
+  ctx.strokeStyle = "#1976d2";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
 
-    for (let i = 0; i < totalPeaks; i++) {
-      const [min, max] = samples[i] || [0, 0];
-      const x = labelOffset + i * peakSpacing + peakSpacing / 2;
-      const yMin = height / 2 - min * height / 2;
-      const yMax = height / 2 - max * height / 2;
+  for (let i = 0; i < totalPeaks; i++) {
+    const [min, max] = samples[i] || [0, 0];
+    const x = labelOffset + i * peakSpacing + peakSpacing / 2;
+    const yMin = waveformHeight / 2 - min * waveformHeight / 2;
+    const yMax = waveformHeight / 2 - max * waveformHeight / 2;
 
-      ctx.moveTo(x, yMin);
-      ctx.lineTo(x, yMax);
+    ctx.moveTo(x, yMin);
+    ctx.lineTo(x, yMax);
+  }
+
+  ctx.stroke();
+
+  // === MEL SPECTROGRAM ===
+  function fireColor(norm) {
+    const clamped = Math.max(0, Math.min(1, norm));
+    const curved = Math.pow(clamped, 2.5); // nonlinear ramp
+
+    let r = 0, g = 0, b = 0;
+
+    if (curved < 0.2) {
+      b = Math.round(50 * (curved / 0.2));
+    } else if (curved < 0.4) {
+      r = Math.round(150 * ((curved - 0.2) / 0.2));
+      b = 80 - Math.round(40 * ((curved - 0.2) / 0.2));
+    } else if (curved < 0.7) {
+      r = 150 + Math.round(80 * ((curved - 0.4) / 0.3));
+      g = Math.round(50 * ((curved - 0.4) / 0.3));
+    } else {
+      // dimmed yellow-white
+      r = 220;
+      g = 70 + Math.round(155 * ((curved - 0.7) / 0.3));
+      b = Math.round(60 * ((curved - 0.7) / 0.3));
     }
 
-    ctx.stroke();
-  }, [samples, cellWidth, labelOffset, borderWidth, chunkCount]);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
 
-  // ✅ Draw only red line on top canvas
+  const evenChunks = melChunks;
+  const nMels = evenChunks[0].length;
+  const framesPerChunk = evenChunks[0][0].length;
+  const frameWidth = cellWidth / framesPerChunk;
+  const melStep = 8;
+  let x = labelOffset;
+
+  for (let chunk of evenChunks) {
+    for (let frame = 0; frame < framesPerChunk; frame++) {
+      for (let mel = 0; mel < nMels; mel += melStep) {
+        const dB = chunk[mel][frame];
+        const norm = Math.max(0, Math.min(1, (dB + 80) / 80));
+        ctx.fillStyle = fireColor(norm);
+
+        const y = waveformHeight + melHeight - ((mel + melStep) * melHeight) / nMels;
+        const bandHeight = (melStep * melHeight) / nMels;
+        ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(frameWidth), Math.ceil(bandHeight));
+      }
+      x += frameWidth;
+    }
+  }
+}, [samples, melChunks, cellWidth, labelOffset, borderWidth, chunkCount]);
+
+  // === PLAYBACK CURSOR ===
   useEffect(() => {
     if (!cursorRef.current) return;
 
@@ -55,21 +105,22 @@ const WaveformViewer = ({
     const ctx = canvas.getContext("2d");
 
     canvas.width = width;
-    canvas.height = height;
+    canvas.height = totalHeight;
 
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, width, totalHeight);
 
     if (cursorX !== null && !isNaN(cursorX)) {
+      const x = labelOffset + cursorX;
       ctx.beginPath();
       ctx.strokeStyle = "red";
       ctx.lineWidth = 1;
-      ctx.moveTo(labelOffset + cursorX, 0);
-      ctx.lineTo(labelOffset + cursorX, height);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, waveformHeight);
       ctx.stroke();
     }
-  }, [cursorX, labelOffset, width, height]);
+  }, [cursorX, labelOffset, width, totalHeight]);
 
-  // ✅ Click handler
+  // Use Effect
   useEffect(() => {
     const canvas = cursorRef.current;
     if (!canvas || !onSeek) return;
@@ -91,29 +142,17 @@ const WaveformViewer = ({
   }, [chunkCount, cellWidth, labelOffset, onSeek]);
 
   return (
-    <div style={{ position: "relative", height }}>
+    <div style={{ position: "relative", height: totalHeight }}>
       <canvas
-        ref={waveformRef}
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          zIndex: 0,
-          pointerEvents: "none", 
-        }}
+        ref={canvasRef}
+        style={{ position: "absolute", left: 0, top: 0, zIndex: 0, pointerEvents: "none" }}
       />
       <canvas
         ref={cursorRef}
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          zIndex: 1,
-          cursor: "pointer",
-        }}
+        style={{ position: "absolute", left: 0, top: 0, zIndex: 1, cursor: "pointer" }}
       />
     </div>
   );
 };
 
-export default WaveformViewer;
+export default WaveformViewer; 
