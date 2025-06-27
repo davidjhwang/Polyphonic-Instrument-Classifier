@@ -28,7 +28,7 @@ useEffect(() => {
   canvas.height = totalHeight;
   ctx.clearRect(0, 0, width, totalHeight);
 
-  // === WAVEFORM ===
+  // // === WAVEFORM ===
   const peaksPerCell = 7;
   const peakSpacing = cellWidth / peaksPerCell;
   const totalPeaks = chunkCount * peaksPerCell;
@@ -49,53 +49,83 @@ useEffect(() => {
 
   ctx.stroke();
 
-  // === MEL SPECTROGRAM ===
-  function fireColor(norm) {
-    const clamped = Math.max(0, Math.min(1, norm));
-    const curved = Math.pow(clamped, 2.5); // nonlinear ramp
+// === MEL SPECTROGRAM ===
+function fireColor(norm) {
+  const clamped = Math.max(0, Math.min(1, norm));
+  const adjusted = Math.pow(clamped, 0.4); // nonlinear
 
-    let r = 0, g = 0, b = 0;
+  let r = 0, g = 0, b = 0;
 
-    if (curved < 0.2) {
-      b = Math.round(50 * (curved / 0.2));
-    } else if (curved < 0.4) {
-      r = Math.round(150 * ((curved - 0.2) / 0.2));
-      b = 80 - Math.round(40 * ((curved - 0.2) / 0.2));
-    } else if (curved < 0.7) {
-      r = 150 + Math.round(80 * ((curved - 0.4) / 0.3));
-      g = Math.round(50 * ((curved - 0.4) / 0.3));
-    } else {
-      // dimmed yellow-white
-      r = 220;
-      g = 70 + Math.round(155 * ((curved - 0.7) / 0.3));
-      b = Math.round(60 * ((curved - 0.7) / 0.3));
-    }
-
-    return `rgb(${r}, ${g}, ${b})`;
+  if (adjusted < 0.05) {
+    // Deep black → dark blue
+    const t = adjusted / 0.05;
+    r = 0;
+    g = 0;
+    b = Math.round(40 + 60 * t); // 40 → 100
+  } else if (adjusted < 0.15) {
+    // Dark blue → purple
+    const t = (adjusted - 0.05) / 0.1;
+    r = Math.round(80 * t);     // 0 → 80
+    g = 0;
+    b = 100 + Math.round(80 * t); // 100 → 180
+  } else if (adjusted < 0.3) {
+    // Purple → Magenta
+    const t = (adjusted - 0.15) / 0.15;
+    r = 80 + Math.round(100 * t); // 80 → 180
+    g = 0;
+    b = 180 - Math.round(60 * t); // 180 → 120
+  } else if (adjusted < 0.6) {
+    // Magenta → Red
+    const t = (adjusted - 0.3) / 0.3;
+    r = 180 + Math.round(60 * t); // 180 → 240
+    g = 0;
+    b = 120 - Math.round(120 * t); // 120 → 0
+  } else if (adjusted < 0.85) {
+    // Red → Orange → Yellow
+    const t = (adjusted - 0.6) / 0.25;
+    r = 240;
+    g = Math.round(160 * t); // 0 → 160
+    b = 0;
+  } else {
+    // Yellow → Soft white
+    const t = (adjusted - 0.85) / 0.15;
+    r = 230 + Math.round(10 * t);  // 230 → 240
+    g = 160 + Math.round(95 * t);  // 160 → 255
+    b = Math.round(235 * t);       // 0 → 235
   }
 
-  const evenChunks = melChunks;
-  const nMels = evenChunks[0].length;
-  const framesPerChunk = evenChunks[0][0].length;
-  const frameWidth = cellWidth / framesPerChunk;
-  const melStep = 8;
-  let x = labelOffset;
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
-  for (let chunk of evenChunks) {
-    for (let frame = 0; frame < framesPerChunk; frame++) {
-      for (let mel = 0; mel < nMels; mel += melStep) {
-        const dB = chunk[mel][frame];
-        const norm = Math.max(0, Math.min(1, (dB + 80) / 80));
-        ctx.fillStyle = fireColor(norm);
+const evenChunks = melChunks;
+const nMels = evenChunks[0].length;
+const framesPerChunk = evenChunks[0][0].length;
+const frameWidth = cellWidth / framesPerChunk;
+const melStep = 4;
+let x = labelOffset;
 
-        const y = waveformHeight + melHeight - ((mel + melStep) * melHeight) / nMels;
-        const bandHeight = (melStep * melHeight) / nMels;
-        ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(frameWidth), Math.ceil(bandHeight));
-      }
-      x += frameWidth;
+const minDb = -100;
+const maxDb = 50;
+
+for (let chunk of evenChunks) {
+  for (let frame = 0; frame < framesPerChunk; frame++) {
+    for (let mel = 0; mel < nMels; mel += melStep) {
+      const dB = Math.min(chunk[mel][frame], maxDb);
+      const power = Math.pow(10, dB / 10);
+      const norm = Math.max(0, Math.min(1, power / 1000)); 
+      const curved = Math.pow(norm, 0.7); // curve
+
+      ctx.fillStyle = fireColor(curved);
+
+      const y = waveformHeight + melHeight - ((mel + melStep) * melHeight) / nMels;
+      const bandHeight = (melStep * melHeight) / nMels;
+      ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(frameWidth), Math.ceil(bandHeight));
     }
+    x += frameWidth;
   }
-}, [samples, melChunks, cellWidth, labelOffset, borderWidth, chunkCount]);
+}
+
+  }, [samples, melChunks, cellWidth, labelOffset, borderWidth, chunkCount]);
 
   // === PLAYBACK CURSOR ===
   useEffect(() => {
