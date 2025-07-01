@@ -1,165 +1,159 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import {
-  decodeAudioFile,
-  sliceIntoChunks,
-  generateMelSpectrogram,
-  downsamplePeaks
-} from "./utils/audioProcessor";
-import { runModelOnSpectrogram } from "./utils/runInference";
-import WaveformViewer from "./components/WaveformViewer";
+import { decodeAudio, intoChunks, generateSpectrogram, samplePeaks} from "./utils/audioProcessor";
+import { runModel } from "./utils/runInference";
+import WaveformDisplay from "./components/WaveformDisplay.js";
 import PredictionTable from "./components/PredictionTable";
 
 const INSTRUMENTS = ['Piano', 'Guitar', 'Bass', 'Strings', 'Drums'];
 
 function App() {
+  // File
   const [file, setFile] = useState(null);
   const [audioBuffer, setAudioBuffer] = useState(null);
   const [audioCtx, setAudioCtx] = useState(null);
   const [sourceNode, setSourceNode] = useState(null);
-  const [cursorX, setCursorX] = useState(null);
-  const animationRef = useRef(null);
 
+  // UI
+  const [waveform, setWaveform] = useState([]);
+  const [melChunks, setMelChunks] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [timeLabels, setTimeLabels] = useState([]);
   const [status, setStatus] = useState("Waiting for file.");
-  const [waveform, setWaveform] = useState([]);
 
+  // Playback
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [startRatio, setStartRatio] = useState(0);
+  const [cursorX, setCursorX] = useState(null);
+  const animationRef = useRef(null);
+
+  // Layout
   const [cellWidth, setCellWidth] = useState(50);
   const [labelOffset, setLabelOffset] = useState(120);
   const [cellBorderWidth, setCellBorderWidth] = useState(0);
-
   const firstCellRef = useRef(null);
   const labelCellRef = useRef(null);
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [startRatio, setStartRatio] = useState(0);
-
-  const [melChunks, setMelChunks] = useState([]);
-
+  // Acquire timeline render parameters 
   useEffect(() => {
     if (firstCellRef.current && labelCellRef.current) {
-      const cell = firstCellRef.current;
-      const label = labelCellRef.current;
-      
-      const cellRect = cell.getBoundingClientRect();
-      const labelRect = label.getBoundingClientRect();
-      const computed = window.getComputedStyle(cell);
-      const borderThickness = parseFloat(computed.borderLeftWidth);
-      
-      setCellBorderWidth(borderThickness);
+      const cellRect = firstCellRef.current.getBoundingClientRect();
+      const labelRect = labelCellRef.current.getBoundingClientRect();
+      const borderWidth = parseFloat(getComputedStyle(firstCellRef.current).borderLeftWidth);
       setCellWidth(cellRect.width);
+      setCellBorderWidth(borderWidth);
       setLabelOffset(labelRect.width);
     }
   }, [timeline]);
 
+  // Handle audio upload
   const handleUpload = async () => {
     if (!file) return;
 
-    // Clear previous results
+    // reset
+    stopAudio();
+    setStatus("Decoding...");
     setTimeline([]);
     setTimeLabels([]);
     setWaveform([]);
     setCursorX(null);
     setStartRatio(0);
-    setStatus("Decoding...");
-
-    // Stop any existing audio playback
-    if (audioCtx) {
-      audioCtx.close();
-      setAudioCtx(null);
-    }
-    if (sourceNode) {
-      try {
-        sourceNode.stop();
-      } catch (e) {
-        console.warn("Source node already stopped or null.");
-      }
-      setSourceNode(null);
-    }
-    cancelAnimationFrame(animationRef.current);
-    setIsPlaying(false);
 
     try {
-      const { audioBuffer, rawData } = await decodeAudioFile(file);
-      setAudioBuffer(audioBuffer); 
+      // decode
+      const { audioBuffer, rawData } = await decodeAudio(file);
+      setAudioBuffer(audioBuffer);
       setStatus(`Loaded audio with ${rawData.length} samples`);
 
-      const peakBinsPerCell = 7;
-      const totalPeaks = peakBinsPerCell * Math.ceil(rawData.length / 44100 / 1.0);
-      const peaks = downsamplePeaks(rawData, totalPeaks);
-      setWaveform(peaks);
+      // downsample
+      const totalPeaks = 7 * Math.ceil(rawData.length / 44100);
+      setWaveform(samplePeaks(rawData, totalPeaks));
 
-      const rawChunks = sliceIntoChunks(rawData, 44100, 1.0, 1.0, false);
-      const normChunks = sliceIntoChunks(rawData, 44100, 1.0, 1.0)
-      setStatus(`Sliced into ${rawChunks.length} chunks, generating mel spectrograms...`);
+      // slice
+      const rawChunks = intoChunks(rawData, 44100, 1.0, 1.0, false);
+      const normChunks = intoChunks(rawData, 44100, 1.0, 1.0);
+      setStatus(`Sliced into ${rawChunks.length} chunks. Generating spectrograms...`);
 
-      const melSpectrogramsVisual = rawChunks.map(chunk => generateMelSpectrogram(chunk));
-      const melSpectrogramInfer = normChunks.map(chunk => generateMelSpectrogram(chunk));
+      // transform
+      const melVisuals = rawChunks.map(chunk => generateSpectrogram(chunk));
+      const melInputs = normChunks.map(chunk => generateSpectrogram(chunk));
+      setMelChunks(melVisuals);
 
-      setMelChunks(melSpectrogramsVisual);
-      setStatus(`Generated ${melSpectrogramsVisual.length} mel spectrograms. Running inference...`);
-
+      // predict
+      setStatus("Running inference...");
       const predictions = [];
-
-      for (let i = 0; i < melSpectrogramInfer.length; i++) {
-        const result = await runModelOnSpectrogram(melSpectrogramInfer[i]);
+      for (let i = 0; i < melInputs.length; i++) {
+        const result = await runModel(melInputs[i]);
         predictions.push({
           time: (i * 1.0).toFixed(2),
           instruments: result
         });
 
         if (i % 50 === 0) {
-          setStatus(`Running inference... (${i}/${melSpectrogramInfer.length})`);
-          await new Promise(res => setTimeout(res, 10));
+          setStatus(`Inference... (${i}/${melInputs.length})`);
+          await new Promise(res => setTimeout(res, 10)); 
         }
       }
 
+      // store
       const matrix = INSTRUMENTS.map(() => Array(predictions.length).fill(false));
-      const times = [];
+      const times = predictions.map(p => p.time);
 
       predictions.forEach((chunk, i) => {
-        times.push(chunk.time);
         chunk.instruments.forEach((pred, j) => {
-          if (pred.active) {
-            matrix[j][i] = true;
-          }
+          if (pred.active) matrix[j][i] = true;
         });
       });
 
       setTimeline(matrix);
       setTimeLabels(times);
-      setStatus("Done!");
-      setStartRatio(0);
       setCursorX(0);
-    } catch (err) {
-      console.error("Error during processing:", err);
+      setStartRatio(0);
+      setStatus("Done!");
+    } 
+    catch (err) {
+      console.error("Failed during processing", err);
       setStatus("Failed during processing");
     }
+  };
+
+  const stopAudio = () => {
+    if (sourceNode) {
+      try {
+        sourceNode.stop();
+      } catch {}
+      setSourceNode(null);
+    }
+
+    if (audioCtx) {
+      audioCtx.close();
+      setAudioCtx(null);
+    }
+
+    cancelAnimationFrame(animationRef.current);
+    setIsPlaying(false);
   };
 
   const playAudio = useCallback((customRatio) => {
     if (!audioBuffer) return;
 
     const ratio = customRatio ?? startRatio;
-    const rawOffset = audioBuffer.duration * ratio;
-    const offset = Math.min(rawOffset, audioBuffer.duration - 0.01);
+    const offset = Math.min(audioBuffer.duration * ratio, audioBuffer.duration - 0.01);
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createBufferSource();
 
-    const context = new (window.AudioContext || window.webkitAudioContext)();
-    const source = context.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(context.destination);
-    source.start(0, offset);
+    src.buffer = audioBuffer;
+    src.connect(ctx.destination);
+    src.start(0, offset);
 
-    const playStartTime = context.currentTime;
-
-    setAudioCtx(context);
-    setSourceNode(source);
+    const startTime = ctx.currentTime;
+    setAudioCtx(ctx);
+    setSourceNode(src);
     setIsPlaying(true);
 
     const totalWidth = timeLabels.length * cellWidth;
 
-    const update = () => {
-      const elapsed = context.currentTime - playStartTime;
+    const animate = () => {
+      const elapsed = ctx.currentTime - startTime;
       const progress = offset + elapsed;
 
       if (progress >= audioBuffer.duration) {
@@ -169,12 +163,11 @@ function App() {
         return;
       }
 
-      const x = (progress / audioBuffer.duration) * totalWidth;
-      setCursorX(x);
-      animationRef.current = requestAnimationFrame(update);
+      setCursorX((progress / audioBuffer.duration) * totalWidth);
+      animationRef.current = requestAnimationFrame(animate);
     };
 
-    update();
+    animate();
   }, [audioBuffer, startRatio, timeLabels.length, cellWidth]);
 
   const pauseAudio = useCallback(() => {
@@ -182,13 +175,9 @@ function App() {
       try {
         sourceNode.stop();
       } catch (err) {
-        if (err instanceof DOMException) {
-          console.warn("Audio source already stopped.");
-        } else {
-          throw err;
-        }
+        if (!(err instanceof DOMException)) throw err;
       }
-      setSourceNode(null); 
+      setSourceNode(null);
     }
 
     if (audioCtx) {
@@ -204,47 +193,79 @@ function App() {
   }, [sourceNode, audioCtx, startRatio, timeLabels.length, cellWidth]);
 
   const handleSeek = (ratio) => {
-    const clampedRatio = Math.min(Math.max(ratio, 0), 0.999);
-    setStartRatio(clampedRatio);
+    const clamped = Math.max(0, Math.min(0.999, ratio));
+    setStartRatio(clamped);
 
     if (isPlaying) {
       pauseAudio();
-      setTimeout(() => playAudio(clampedRatio), 0);
+      setTimeout(() => playAudio(clamped), 0);
     } else {
-      setCursorX(clampedRatio * timeLabels.length * cellWidth); 
+      setCursorX(clamped * timeLabels.length * cellWidth);
     }
   };
 
+  // Spacebar toggle
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const keyHandler = (e) => {
       if (e.code === "Space") {
         e.preventDefault();
-        if (isPlaying) {
-          pauseAudio();
-        } else {
-          playAudio();
-        }
+        isPlaying ? pauseAudio() : playAudio();
       }
     };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", keyHandler);
+    return () => window.removeEventListener("keydown", keyHandler);
   }, [isPlaying, playAudio, pauseAudio]);
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
-      <h2>Polyphonic Instrument Classifier Timeline</h2>
-      <input type="file" accept="audio/*" onChange={(e) => setFile(e.target.files[0])} />
+    <div style={{ padding: "4rem", fontFamily: "sans-serif", fontSize: "1.5rem" }}>
+      <h2 style={{ fontSize: "2.4rem", marginBottom: "2rem" }}>
+        Polyphonic Instrument Classifier
+      </h2>
+
+      <input
+        type="file"
+        accept="audio/*"
+        onChange={(e) => setFile(e.target.files[0])}
+        style={{
+          fontSize: "1.2rem",
+          padding: "0.8rem 1.2rem",
+          borderRadius: "0.5rem",
+          border: "2px solid #555",
+        }}
+      />
       <br /><br />
-      <button onClick={handleUpload}>Upload & Analyze</button>
-      <p>{status}</p>
+
+      <button
+        onClick={handleUpload}
+        style={{
+          fontSize: "1.4rem",
+          padding: "0.8rem 1.5rem",
+          cursor: "pointer",
+          backgroundColor: "#0f0f0f",
+          color: "white",
+          border: "none",
+          borderRadius: "0.5rem",
+          marginTop: "1rem",
+        }}
+      >
+        Upload & Analyze
+      </button>
+
+      <p style={{ fontSize: "1.3rem", marginTop: "1.5rem" }}>{status}</p>
 
       {timeline.length > 0 && (
-        <div style={{ marginTop: "2rem", overflowX: "auto", border: "1px solid #ccc" }}>
-          <WaveformViewer
+        <div
+          style={{
+            marginTop: "3rem",
+            overflowX: "auto",
+            border: "3px solid #999",
+            padding: "0rem",
+          }}
+        >
+          <WaveformDisplay
             samples={waveform}
             melChunks={melChunks}
-            samplesPerChunk={44100 * 1.0} 
+            samplesPerChunk={44100}
             chunkCount={timeLabels.length}
             cellWidth={cellWidth}
             labelOffset={labelOffset}

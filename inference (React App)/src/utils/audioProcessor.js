@@ -3,7 +3,7 @@
 import FFT from 'fft.js';
 import { melFilterbank } from "./mel_filterbank";
 
-export async function decodeAudioFile(file) {
+export async function decodeAudio(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -41,7 +41,7 @@ export async function decodeAudioFile(file) {
   });
 }
 
-export function sliceIntoChunks(waveform, sampleRate, duration = 1.0, step = 0.5, normalize = true) {
+export function intoChunks(waveform, sampleRate, duration = 1.0, step = 0.5, normalize = true) {
   const chunkLength = Math.floor(duration * sampleRate);
   const stepLength = Math.floor(step * sampleRate);
   const chunks = [];
@@ -74,7 +74,7 @@ function hannWindow(N) {
   return window;
 }
 
-export function generateMelSpectrogram(chunk, sampleRate = 44100, nFFT = 2048, hopLength = 1024, nMels = 128) {
+export function generateSpectrogram(chunk, nFFT = 2048, hopLength = 1024, nMels = 128) {
   const hann = hannWindow(nFFT);
   const fft = new FFT(nFFT);
   const melSpectrogram = [];
@@ -118,7 +118,7 @@ export function generateMelSpectrogram(chunk, sampleRate = 44100, nFFT = 2048, h
   return transposed;
 }
 
-export function downsamplePeaks(samples, totalBins) {
+export function samplePeaks(samples, totalBins) {
   const result = [];
   const binSize = Math.floor(samples.length / totalBins);
 

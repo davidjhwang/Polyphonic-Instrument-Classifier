@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from "react";
 
-const WaveformViewer = ({
+const WaveformDisplay = ({
   samples,
   melChunks,
   cellWidth,
@@ -27,6 +27,8 @@ useEffect(() => {
   canvas.width = width;
   canvas.height = totalHeight;
   ctx.clearRect(0, 0, width, totalHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, totalHeight);
 
   // // === WAVEFORM ===
   const peaksPerCell = 7;
@@ -185,4 +187,4 @@ for (let chunk of evenChunks) {
   );
 };
 
-export default WaveformViewer; 
+export default WaveformDisplay; 

@@ -17,7 +17,7 @@ const PredictionTable = React.memo(function PredictionTable({
       }}
     >
       <colgroup>
-        <col style={{ width: `${labelOffset}px` }} />
+        <col style={{ width: `120px` }} /> {}
         {timeLabels.map((_, i) => (
           <col key={i} style={{ width: `${cellWidth}px` }} />
         ))}
@@ -62,7 +62,10 @@ const PredictionTable = React.memo(function PredictionTable({
                 left: 0,
                 background: "#f7f7f7",
                 paddingRight: "1rem",
-                fontWeight: "bold"
+                paddingLeft: "0", 
+                fontWeight: "bold",
+                textAlign: "left", 
+                fontSize: "1.5rem",  
               }}
             >
               {["Piano", "Guitar", "Bass", "Strings", "Drums"][rowIdx]}

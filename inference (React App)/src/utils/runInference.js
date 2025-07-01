@@ -13,7 +13,7 @@ export async function loadTFJSModel() {
   return model;
 }
 
-export async function runModelOnSpectrogram(melSpec) {
+export async function runModel(melSpec) {
   if (!model) await loadTFJSModel();
 
   // Reshape: [128][42] → [1, 128, 42, 1]
