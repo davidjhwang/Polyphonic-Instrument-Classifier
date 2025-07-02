@@ -3,61 +3,45 @@
 import FFT from 'fft.js';
 import { melFilterbank } from "./mel_filterbank";
 
+// Decode file
 export async function decodeAudio(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-
-    reader.onload = async (event) => {
+    reader.onload = async (e) => {
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-          sampleRate: 44100,
-        });
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+        const buffer = await audioCtx.decodeAudioData(e.target.result);
+        const length = buffer.length;
+        const mono = new Float32Array(length);
 
-        const arrayBuffer = event.target.result;
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-        const numChannels = audioBuffer.numberOfChannels;
-        const length = audioBuffer.length;
-
-        // Average channels to mono
-        const rawData = new Float32Array(length);
-        for (let ch = 0; ch < numChannels; ch++) {
-          const channelData = audioBuffer.getChannelData(ch);
-          for (let i = 0; i < length; i++) {
-            rawData[i] += channelData[i];
-          }
-        }
-        for (let i = 0; i < length; i++) {
-          rawData[i] /= numChannels;
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+          const data = buffer.getChannelData(ch);
+          for (let i = 0; i < length; i++) mono[i] += data[i];
         }
 
-        resolve({ audioBuffer, rawData });
+        for (let i = 0; i < length; i++) mono[i] /= buffer.numberOfChannels;
+
+        resolve({ audioBuffer: buffer, rawData: mono });
       } catch (err) {
         reject(err);
       }
     };
-
     reader.readAsArrayBuffer(file);
   });
 }
 
+// Split into chunks
 export function intoChunks(waveform, sampleRate, duration = 1.0, step = 0.5, normalize = true) {
-  const chunkLength = Math.floor(duration * sampleRate);
-  const stepLength = Math.floor(step * sampleRate);
+  const chunkLen = Math.floor(duration * sampleRate);
+  const stepLen = Math.floor(step * sampleRate);
   const chunks = [];
 
-  for (let start = 0; start + chunkLength <= waveform.length; start += stepLength) {
-    let chunk = waveform.slice(start, start + chunkLength);
+  for (let i = 0; i + chunkLen <= waveform.length; i += stepLen) {
+    let chunk = waveform.slice(i, i + chunkLen);
 
     if (normalize) {
-      let maxAbs = 0;
-      for (let i = 0; i < chunk.length; i++) {
-        const absVal = Math.abs(chunk[i]);
-        if (absVal > maxAbs) maxAbs = absVal;
-      }
-
-      const EPSILON = 1e-6;
-      chunk = chunk.map((v) => v / (maxAbs + EPSILON));
+      const maxAbs = Math.max(...chunk.map(Math.abs)) || 1e-6;
+      chunk = chunk.map((v) => v / maxAbs);
     }
 
     chunks.push(chunk);
@@ -66,68 +50,52 @@ export function intoChunks(waveform, sampleRate, duration = 1.0, step = 0.5, nor
   return chunks;
 }
 
+// Hann window
 function hannWindow(N) {
-  const window = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
-  }
-  return window;
+  return Float32Array.from({ length: N }, (_, i) => 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1))));
 }
 
-export function generateSpectrogram(chunk, nFFT = 2048, hopLength = 1024, nMels = 128) {
-  const hann = hannWindow(nFFT);
+// Convert waveform chunk → transposed mel spectrogram [nMels][frames]
+export function generateSpectrogram(chunk, nFFT = 2048, hop = 1024, nMels = 128) {
+  const window = hannWindow(nFFT);
   const fft = new FFT(nFFT);
-  const melSpectrogram = [];
+  const spec = [];
 
-  const nFrames = Math.floor((chunk.length - nFFT) / hopLength) + 1;
-
-  for (let i = 0; i < nFrames; i++) {
-    const start = i * hopLength;
-    const frame = chunk.slice(start, start + nFFT);
-    const windowed = frame.map((v, j) => v * hann[j]);
-
-    const input = new Array(nFFT).fill(0);
+  const frames = Math.floor((chunk.length - nFFT) / hop) + 1;
+  for (let i = 0; i < frames; i++) {
+    const frame = chunk.slice(i * hop, i * hop + nFFT).map((v, j) => v * window[j]);
+    const input = Array.from(frame);
     const output = new Array(nFFT).fill(0);
-    for (let j = 0; j < nFFT; j++) input[j] = windowed[j] || 0;
 
     fft.realTransform(output, input);
     fft.completeSpectrum(output);
 
-    const powerSpectrum = [];
+    const power = [];
     for (let k = 0; k <= nFFT / 2; k++) {
-      const re = output[2 * k];
-      const im = output[2 * k + 1];
-      powerSpectrum.push(re * re + im * im);
+      const re = output[2 * k], im = output[2 * k + 1];
+      power.push(re * re + im * im);
     }
 
-    const melBands = melFilterbank.map((filterRow) => {
-      let sum = 0;
-      for (let i = 0; i < filterRow.length; i++) {
-        sum += filterRow[i] * powerSpectrum[i];
-      }
-      return 10 * Math.log10(sum + 1e-10);
-    });
+    const melBands = melFilterbank.map((row) =>
+      10 * Math.log10(row.reduce((sum, w, i) => sum + w * power[i], 0) + 1e-10)
+    );
 
-    melSpectrogram.push(melBands);
+    spec.push(melBands);
   }
 
-  const transposed = Array.from({ length: nMels }, (_, m) =>
-    melSpectrogram.map((frame) => frame[m])
-  );
-
-  return transposed;
+  return Array.from({ length: nMels }, (_, m) => spec.map((f) => f[m]));
 }
 
+// Downsample samples into [min, max] pairs for waveform display
 export function samplePeaks(samples, totalBins) {
-  const result = [];
   const binSize = Math.floor(samples.length / totalBins);
+  const result = [];
 
   for (let i = 0; i < totalBins; i++) {
     const start = i * binSize;
     const end = i === totalBins - 1 ? samples.length : (i + 1) * binSize;
-    let min = 1.0;
-    let max = -1.0;
 
+    let min = 1.0, max = -1.0;
     for (let j = start; j < end; j++) {
       const val = samples[j];
       if (val < min) min = val;
@@ -137,5 +105,5 @@ export function samplePeaks(samples, totalBins) {
     result.push([min, max]);
   }
 
-  return result; // array of [min, max]
+  return result;
 }

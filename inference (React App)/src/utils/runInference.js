@@ -5,7 +5,7 @@ import * as tf from "@tensorflow/tfjs";
 let model = null;
 
 const INSTRUMENTS = ['Piano', 'Guitar', 'Bass', 'Strings', 'Drums'];
-const CLASS_THRESHOLDS = [0.5, 0.6, 0.5, 0.3, 0.5];
+const THRESHOLDS = [0.5, 0.6, 0.5, 0.4, 0.5];
 
 export async function loadTFJSModel() {
   if (model) return model;
@@ -26,7 +26,7 @@ export async function runModel(melSpec) {
 
   return INSTRUMENTS.map((name, i) => ({
     name,
-    active: predictions[i] > CLASS_THRESHOLDS[i],
+    active: predictions[i] > THRESHOLDS[i],
     confidence: predictions[i],
   }));
 }

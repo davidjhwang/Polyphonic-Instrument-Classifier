@@ -1,4 +1,4 @@
-// Auto-generated mel filterbank
+// PyTorch Mel filterbank
 // SAMPLE_RATE: 44100, N_FFT: 2048, N_MELS: 128, N_FREQ_BINS: 1025, F_MIN: 30, F_MAX: 16000
 
 export const melFilterbank = [
