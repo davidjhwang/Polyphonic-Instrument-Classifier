@@ -3,6 +3,8 @@
 A browser-based web app for **polyphonic instrument classification**.  
 It detects multiple instruments (piano, guitar, bass, strings, drums) playing simultaneously, visualizing predictions along a scrolling timeline with waveform and spectrogram displays.
 
+**Demo Video:** [Watch on YouTube](https://youtu.be/CxRzhGpg3kU)
+
 ## Overview
 This project combines **deep learning** and **web audio processing**.  
 A Convolutional Neural Network (CNN) was trained in **Python** using **TensorFlow**, and **Mel spectrograms** were extracted using **PyTorch** and **Librosa**.  
